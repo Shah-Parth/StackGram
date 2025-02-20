@@ -1,0 +1,106 @@
+services:
+  proxy:
+    image: nginx:alpine
+    container_name: proxy
+    ports:
+      - "80:80"
+    volumes:
+      - ./server/nginx.conf:/etc/nginx/nginx.conf
+    restart: "unless-stopped"
+    networks:
+      - backend
+
+  client:
+    container_name: client
+    build:
+      context: ./client
+      dockerfile: Dockerfile.dev
+    ports:
+      - "5173:5173"
+    restart: "unless-stopped"
+    networks:
+      - backend
+  server:
+    container_name: server
+    build:
+      context: ./server
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    environment:
+      SECRET_KEY: secret
+      ORIGIN: http://localhost:5173
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: password
+      POSTGRES_HOST: pg
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: dev
+      ELASTICSEARCH_HOST: elasticsearch
+      ELASTICSEARCH_PORT: 9200
+      ELASTICSEARCH_USERNAME: elastic
+      ELASTICSEARCH_PASSWORD: password
+    volumes:
+      - ./server:/app
+    restart: "unless-stopped"
+    networks:
+      - backend
+    links:
+      - pg
+      - elasticsearch
+    depends_on:
+      - pg
+      - elasticsearch
+
+  pg:
+    container_name: pg
+    image: postgres:14.5-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: dev
+    volumes:
+      - ./server/src/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: "always"
+    networks:
+      - backend
+
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@sample.com
+      PGADMIN_DEFAULT_PASSWORD: password
+    volumes:
+      - ./server/db.json:/pgadmin4/servers.json
+    restart: "unless-stopped"
+    networks:
+      - backend
+  
+  elasticsearch:
+    container_name: elasticsearch
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.16.4
+    environment:
+      - node.name=elasticsearch
+      - cluster.name=elasticsearch
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      - ELASTIC_PASSWORD=password
+    ports:
+      - "9200:9200"
+    restart: "always"
+    networks:
+      - backend
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  data:
+    driver: local
